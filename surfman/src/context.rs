@@ -6,6 +6,7 @@ use crate::Gl;
 use crate::gl::types::GLuint;
 use crate::gl;
 use crate::info::GLVersion;
+use crate::platform::default::context::Context;
 
 use std::ffi::CStr;
 use std::os::raw::c_char;
@@ -31,26 +32,28 @@ bitflags! {
     ///
     /// There are some extra `surfman`-specific flags as well.
     pub struct ContextAttributeFlags: u8 {
+        /// If there is no color, you can't render to framebuffer(0)
+        const COLOR                 = 0x01;
         /// Surfaces created for this context will have an alpha channel (RGBA or BGRA; i.e. 4
         /// channels, 32 bits per pixel, 8 bits per channel). If this is not present, surfaces will
         /// be RGBX or BGRX (i.e. 3 channels, 32 bits per pixel, 8 bits per channel).
-        const ALPHA                 = 0x01;
+        const ALPHA                 = 0x02;
         /// Surfaces created for this context will have a 24-bit depth buffer.
-        const DEPTH                 = 0x02;
+        const DEPTH                 = 0x04;
         /// Surfaces created for this context will have an 8-bit stencil buffer, possibly using
         /// packed depth/stencil if the GL implementation supports it.
-        const STENCIL               = 0x04;
+        const STENCIL               = 0x08;
         /// The OpenGL compatibility profile will be used. If this is not present, the core profile
         /// is used.
-        const COMPATIBILITY_PROFILE = 0x08;
+        const COMPATIBILITY_PROFILE = 0x10;
     }
 }
 
 /// Attributes that control aspects of a context and/or surfaces created from that context.
 ///
 /// Similar to: https://www.khronos.org/registry/webgl/specs/latest/1.0/#WEBGLCONTEXTATTRIBUTES
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct ContextAttributes {
+#[derive(Clone, Copy)]
+pub struct ContextAttributes<'a> {
     /// The OpenGL or OpenGL ES version that this context supports.
     /// 
     /// Keep in mind that OpenGL and OpenGL ES have different version numbering schemes. Before
@@ -58,12 +61,17 @@ pub struct ContextAttributes {
     pub version: GLVersion,
     /// Various flags.
     pub flags: ContextAttributeFlags,
+    pub share_with: Option<&'a Context>,
 }
 
-impl ContextAttributes {
+impl ContextAttributes<'_> {
     #[allow(dead_code)]
-    pub(crate) fn zeroed() -> ContextAttributes {
-        ContextAttributes { version: GLVersion::new(0, 0), flags: ContextAttributeFlags::empty() }
+    pub(crate) fn zeroed() -> Self {
+        ContextAttributes {
+            version: GLVersion::new(0, 0),
+            flags: ContextAttributeFlags::empty(),
+            share_with: None,
+        }
     }
 }
 

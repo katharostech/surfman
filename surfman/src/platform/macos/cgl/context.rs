@@ -100,6 +100,7 @@ impl Drop for Context {
 /// This corresponds to a "pixel format" object in many APIs. These are thread-safe.
 pub struct ContextDescriptor {
     cgl_pixel_format: CGLPixelFormatObj,
+    shared_context: CGLContextObj,
 }
 
 impl Drop for ContextDescriptor {
@@ -118,6 +119,7 @@ impl Clone for ContextDescriptor {
         unsafe {
             ContextDescriptor {
                 cgl_pixel_format: CGLRetainPixelFormat(self.cgl_pixel_format),
+                shared_context: self.shared_context,
             }
         }
     }
@@ -165,20 +167,26 @@ impl Device {
 
         cgl_pixel_format_attributes.extend_from_slice(&[0, 0]);
 
-        unsafe {
-            let (mut cgl_pixel_format, mut cgl_pixel_format_count) = (ptr::null_mut(), 0);
-            let err = CGLChoosePixelFormat(cgl_pixel_format_attributes.as_ptr(),
+        let (mut cgl_pixel_format, mut cgl_pixel_format_count) = (ptr::null_mut(), 0);
+        //TODO: getting `ContextCreationFailed(BadPixelFormat)` otherwise
+        if flags.contains(ContextAttributeFlags::COLOR) || true {
+            let err = unsafe {
+                CGLChoosePixelFormat(cgl_pixel_format_attributes.as_ptr(),
                                            &mut cgl_pixel_format,
-                                           &mut cgl_pixel_format_count);
+                                           &mut cgl_pixel_format_count)
+            };
             if err != kCGLNoError {
                 return Err(Error::PixelFormatSelectionFailed(err.to_windowing_api_error()));
             }
             if cgl_pixel_format_count == 0 {
                 return Err(Error::NoPixelFormatFound);
             }
-
-            Ok(ContextDescriptor { cgl_pixel_format })
         }
+
+        Ok(ContextDescriptor {
+            cgl_pixel_format,
+            shared_context: attributes.share_with.map_or(ptr::null_mut(), |ctx| ctx.cgl_context),
+        })
     }
 
     /// Creates a new OpenGL context.
@@ -195,7 +203,7 @@ impl Device {
             // Create the CGL context.
             let mut cgl_context = ptr::null_mut();
             let err = CGLCreateContext(descriptor.cgl_pixel_format,
-                                       ptr::null_mut(),
+                                       descriptor.shared_context,
                                        &mut cgl_context);
             if err != kCGLNoError {
                 return Err(Error::ContextCreationFailed(err.to_windowing_api_error()));
@@ -258,7 +266,7 @@ impl Device {
         unsafe {
             let mut cgl_pixel_format = CGLGetPixelFormat(context.cgl_context);
             cgl_pixel_format = CGLRetainPixelFormat(cgl_pixel_format);
-            ContextDescriptor { cgl_pixel_format }
+            ContextDescriptor { cgl_pixel_format, shared_context: ptr::null_mut() }
         }
     }
 
@@ -376,7 +384,7 @@ impl Device {
                 attribute_flags.insert(ContextAttributeFlags::COMPATIBILITY_PROFILE);
             }
 
-            return ContextAttributes { flags: attribute_flags, version };
+            return ContextAttributes { flags: attribute_flags, version, share_with: None };
         }
 
         unsafe fn get_pixel_format_attribute(context_descriptor: &ContextDescriptor,
