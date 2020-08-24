@@ -52,6 +52,7 @@ pub struct ContextDescriptor {
     pub(crate) egl_config_id: EGLint,
     pub(crate) gl_version: GLVersion,
     pub(crate) compatibility_profile: bool,
+    pub(crate) shared_context: EGLContext,
 }
 
 #[must_use]
@@ -337,6 +338,10 @@ impl ContextDescriptor {
                 egl_config_id,
                 gl_version,
                 compatibility_profile,
+                shared_context: attributes.share_with.map_or(ptr::null_mut(), |ctx| match ctx {
+                    crate::platform::generic::multi::context::Context::Default(ctx) => ctx.0.egl_context,
+                    crate::platform::generic::multi::context::Context::Alternate(ctx) => ctx.0.egl_context,
+                }),
             })
         })
     }
@@ -353,7 +358,7 @@ impl ContextDescriptor {
             let gl_version = GLVersion::current(gl);
             let compatibility_profile = context::current_context_uses_compatibility_profile(gl);
 
-            ContextDescriptor { egl_config_id, gl_version, compatibility_profile }
+            ContextDescriptor { egl_config_id, gl_version, compatibility_profile, shared_context: std::ptr::null_mut() }
         })
     }
 
@@ -378,7 +383,7 @@ impl ContextDescriptor {
         })
     }
 
-    pub(crate) unsafe fn attributes(&self, egl_display: EGLDisplay) -> ContextAttributes {
+    pub(crate) unsafe fn attributes(&self, egl_display: EGLDisplay) -> ContextAttributes<'static> {
         let egl_config = egl_config_from_id(egl_display, self.egl_config_id);
 
         let alpha_size = get_config_attr(egl_display, egl_config, egl::ALPHA_SIZE as EGLint);
@@ -395,7 +400,7 @@ impl ContextDescriptor {
                             self.compatibility_profile);
 
         // Create appropriate context attributes.
-        ContextAttributes { flags: attribute_flags, version: self.gl_version }
+        ContextAttributes { flags: attribute_flags, version: self.gl_version, share_with: None }
     }
 }
 
@@ -447,7 +452,7 @@ pub(crate) unsafe fn create_context(egl_display: EGLDisplay,
     EGL_FUNCTIONS.with(|egl| {
         let egl_context = egl.CreateContext(egl_display,
                                             egl_config,
-                                            egl::NO_CONTEXT,
+                                            descriptor.shared_context,
                                             egl_context_attributes.as_ptr());
         if egl_context == egl::NO_CONTEXT {
             let err = egl.GetError();

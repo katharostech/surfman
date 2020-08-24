@@ -61,6 +61,7 @@ pub struct ContextAttributes<'a> {
     pub version: GLVersion,
     /// Various flags.
     pub flags: ContextAttributeFlags,
+    /// Specify a context to share resources with
     pub share_with: Option<&'a Context>,
 }
 
